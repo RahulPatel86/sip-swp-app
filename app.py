@@ -1,13 +1,12 @@
-import tkinter as tk
-from tkinter import messagebox, filedialog
+import streamlit as st
 import pandas as pd
 from num2words import num2words
 from openpyxl import Workbook
 from openpyxl.chart import LineChart, Reference
 from openpyxl.utils.dataframe import dataframe_to_rows
-import os
+from io import BytesIO
 
-# --- SIP Function ---
+# --- SIP Calculation ---
 def calculate_sip(principal, annual_rate, years):
     monthly_rate = annual_rate / 12
     months = years * 12
@@ -27,7 +26,7 @@ def calculate_sip(principal, annual_rate, years):
     df = pd.DataFrame(data)
     return df, principal * months, round(opening, 2)
 
-# --- SWP Function ---
+# --- SWP Calculation ---
 def calculate_swp(initial_corpus, withdrawal, annual_rate, years):
     monthly_rate = annual_rate / 12
     months = years * 12
@@ -49,110 +48,77 @@ def calculate_swp(initial_corpus, withdrawal, annual_rate, years):
     df = pd.DataFrame(data)
     return df, round(opening, 2)
 
-# --- Generate Excel ---
-def generate_excel():
-    try:
-        sip_amt = float(entry_sip_amt.get())
-        sip_years = int(entry_sip_years.get())
-        sip_return = float(entry_sip_return.get()) / 100
+# --- Excel Export Function ---
+def generate_excel(sip_df, swp_df, summary_df):
+    output = BytesIO()
+    wb = Workbook()
 
-        swp_amt = float(entry_swp_amt.get())
-        swp_years = int(entry_swp_years.get())
-        swp_return = float(entry_swp_return.get()) / 100
+    ws1 = wb.active
+    ws1.title = "SIP Calculation"
+    for r in dataframe_to_rows(sip_df, index=False, header=True):
+        ws1.append(r)
 
-        # SIP Calculation
-        sip_df, sip_invested, sip_final = calculate_sip(sip_amt, sip_return, sip_years)
-        sip_gain = sip_final - sip_invested
-        sip_final_words = num2words(sip_final, lang='en_IN', to='currency').replace("euro", "rupees").replace("cents", "paise")
+    chart = LineChart()
+    chart.title = "SIP Closing Balance"
+    chart.y_axis.title = "₹"
+    chart.x_axis.title = "Month"
+    data = Reference(ws1, min_col=5, min_row=1, max_row=ws1.max_row)
+    cats = Reference(ws1, min_col=1, min_row=2, max_row=ws1.max_row)
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(cats)
+    ws1.add_chart(chart, f"A{ws1.max_row + 3}")
 
-        # SWP Calculation
-        swp_df, swp_remaining = calculate_swp(sip_final, swp_amt, swp_return, swp_years)
-        swp_remaining_words = num2words(swp_remaining, lang='en_IN', to='currency').replace("euro", "rupees").replace("cents", "paise")
+    ws2 = wb.create_sheet("SWP Plan")
+    for r in dataframe_to_rows(swp_df, index=False, header=True):
+        ws2.append(r)
 
-        # Summary
-        summary_df = pd.DataFrame({
-            "Metric": [
-                "SIP Monthly Investment", "SIP Duration", "SIP Annual Return",
-                "Total SIP Invested", "Final Corpus (SIP)", "Corpus in Words",
-                "SIP Returns (Corpus - Invested)",
-                "SWP Monthly Withdrawal", "SWP Duration", "SWP Annual Return",
-                "Remaining Corpus after SWP", "Remaining Corpus in Words"
-            ],
-            "Value": [
-                f"₹{sip_amt:,.2f}", f"{sip_years} years", f"{sip_return*100:.2f}%",
-                f"₹{sip_invested:,.2f}", f"₹{sip_final:,.2f}", sip_final_words,
-                f"₹{sip_gain:,.2f}", f"₹{swp_amt:,.2f}", f"{swp_years} years",
-                f"{swp_return*100:.2f}%", f"₹{swp_remaining:,.2f}", swp_remaining_words
-            ]
-        })
+    ws3 = wb.create_sheet("Summary")
+    for r in dataframe_to_rows(summary_df, index=False, header=True):
+        ws3.append(r)
 
-        # Save Excel
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx")],
-            title="Save Excel File"
-        )
-        if not file_path:
-            return
+    wb.save(output)
+    output.seek(0)
+    return output
 
-        wb = Workbook()
+# --- Streamlit UI ---
+st.title("📊 SIP + SWP Excel Generator")
 
-        ws1 = wb.active
-        ws1.title = "SIP Calculation"
-        for row in dataframe_to_rows(sip_df, index=False, header=True):
-            ws1.append(row)
+with st.form("inputs"):
+    st.subheader("SIP Details")
+    sip_amt = st.number_input("Monthly SIP Investment (₹)", value=30000)
+    sip_years = st.number_input("SIP Duration (Years)", value=8, step=1)
+    sip_return = st.number_input("SIP Annual Return (%)", value=12.0)
 
-        chart = LineChart()
-        chart.title = "SIP Closing Balance"
-        chart.y_axis.title = "₹"
-        chart.x_axis.title = "Month"
-        data = Reference(ws1, min_col=5, min_row=1, max_row=ws1.max_row)
-        cats = Reference(ws1, min_col=1, min_row=2, max_row=ws1.max_row)
-        chart.add_data(data, titles_from_data=True)
-        chart.set_categories(cats)
-        ws1.add_chart(chart, f"A{ws1.max_row + 3}")
+    st.subheader("SWP Details")
+    swp_amt = st.number_input("Monthly SWP Withdrawal (₹)", value=40000)
+    swp_years = st.number_input("SWP Duration (Years)", value=25, step=1)
+    swp_return = st.number_input("SWP Annual Return (%)", value=8.0)
 
-        ws2 = wb.create_sheet("SWP Plan")
-        for row in dataframe_to_rows(swp_df, index=False, header=True):
-            ws2.append(row)
+    submitted = st.form_submit_button("Generate Excel")
 
-        ws3 = wb.create_sheet("Summary")
-        for row in dataframe_to_rows(summary_df, index=False, header=True):
-            ws3.append(row)
+if submitted:
+    sip_df, sip_invested, sip_final = calculate_sip(sip_amt, sip_return / 100, sip_years)
+    swp_df, swp_remaining = calculate_swp(sip_final, swp_amt, swp_return / 100, swp_years)
 
-        wb.save(file_path)
-        messagebox.showinfo("Success", f"Excel file saved:\n{file_path}")
-    except Exception as e:
-        messagebox.showerror("Error", str(e))
+    sip_final_words = num2words(sip_final, lang='en_IN', to='currency').replace("euro", "rupees").replace("cents", "paise")
+    swp_remaining_words = num2words(swp_remaining, lang='en_IN', to='currency').replace("euro", "rupees").replace("cents", "paise")
 
-# --- Tkinter UI ---
-root = tk.Tk()
-root.title("SIP + SWP Excel Generator")
+    summary_df = pd.DataFrame({
+        "Metric": [
+            "SIP Monthly Investment", "SIP Duration", "SIP Annual Return",
+            "Total SIP Invested", "Final Corpus (SIP)", "Corpus in Words",
+            "SWP Monthly Withdrawal", "SWP Duration", "SWP Annual Return",
+            "Remaining Corpus after SWP", "Remaining Corpus in Words"
+        ],
+        "Value": [
+            f"₹{sip_amt:,.2f}", f"{sip_years} years", f"{sip_return:.2f}%",
+            f"₹{sip_invested:,.2f}", f"₹{sip_final:,.2f}", sip_final_words,
+            f"₹{swp_amt:,.2f}", f"{swp_years} years", f"{swp_return:.2f}%",
+            f"₹{swp_remaining:,.2f}", swp_remaining_words
+        ]
+    })
 
-tk.Label(root, text="SIP Monthly Investment (₹):").grid(row=0, column=0, sticky="e")
-entry_sip_amt = tk.Entry(root)
-entry_sip_amt.grid(row=0, column=1)
+    excel_file = generate_excel(sip_df, swp_df, summary_df)
+    st.success("✅ Excel file generated!")
+    st.download_button("📥 Download Excel", excel_file, file_name="SIP_SWP_Report.xlsx")
 
-tk.Label(root, text="SIP Duration (years):").grid(row=1, column=0, sticky="e")
-entry_sip_years = tk.Entry(root)
-entry_sip_years.grid(row=1, column=1)
-
-tk.Label(root, text="SIP Annual Return (%):").grid(row=2, column=0, sticky="e")
-entry_sip_return = tk.Entry(root)
-entry_sip_return.grid(row=2, column=1)
-
-tk.Label(root, text="SWP Monthly Withdrawal (₹):").grid(row=3, column=0, sticky="e")
-entry_swp_amt = tk.Entry(root)
-entry_swp_amt.grid(row=3, column=1)
-
-tk.Label(root, text="SWP Duration (years):").grid(row=4, column=0, sticky="e")
-entry_swp_years = tk.Entry(root)
-entry_swp_years.grid(row=4, column=1)
-
-tk.Label(root, text="SWP Annual Return (%):").grid(row=5, column=0, sticky="e")
-entry_swp_return = tk.Entry(root)
-entry_swp_return.grid(row=5, column=1)
-
-tk.Button(root, text="Generate Excel", command=generate_excel, bg="green", fg="white").grid(row=6, column=0, columnspan=2, pady=10)
-
-root.mainloop()
