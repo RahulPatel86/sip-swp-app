@@ -103,22 +103,28 @@ if submitted:
     sip_final_words = num2words(sip_final, lang='en_IN', to='currency').replace("euro", "rupees").replace("cents", "paise")
     swp_remaining_words = num2words(swp_remaining, lang='en_IN', to='currency').replace("euro", "rupees").replace("cents", "paise")
 
+    total_swp_withdrawn = swp_amt * len(swp_df)
+    total_swp_withdrawn_words = num2words(total_swp_withdrawn, lang='en_IN', to='currency').replace("euro", "rupees").replace("cents", "paise")
+
     summary_df = pd.DataFrame({
-        "Metric": [
-            "SIP Monthly Investment", "SIP Duration", "SIP Annual Return",
-            "Total SIP Invested", "Final Corpus (SIP)", "Corpus in Words",
-            "SWP Monthly Withdrawal", "SWP Duration", "SWP Annual Return",
-            "Remaining Corpus after SWP", "Remaining Corpus in Words"
+    "Metric": [
+        "SIP Monthly Investment", "SIP Duration", "SIP Annual Return",
+        "Total SIP Invested", "Final Corpus (SIP)", "Corpus in Words",
+        "SWP Monthly Withdrawal", "SWP Duration", "SWP Annual Return",
+        "Total SWP Withdrawn", "Total SWP in Words",
+        "Remaining Corpus after SWP", "Remaining Corpus in Words"
         ],
-        "Value": [
-            f"₹{sip_amt:,.2f}", f"{sip_years} years", f"{sip_return:.2f}%",
-            f"₹{sip_invested:,.2f}", f"₹{sip_final:,.2f}", sip_final_words,
-            f"₹{swp_amt:,.2f}", f"{swp_years} years", f"{swp_return:.2f}%",
-            f"₹{swp_remaining:,.2f}", swp_remaining_words
+    "Value": [
+        f"₹{sip_amt:,.2f}", f"{sip_years} years", f"{sip_return:.2f}%",
+        f"₹{sip_invested:,.2f}", f"₹{sip_final:,.2f}", sip_final_words,
+        f"₹{swp_amt:,.2f}", f"{swp_years} years", f"{swp_return:.2f}%",
+        f"₹{total_swp_withdrawn:,.2f}", total_swp_withdrawn_words,
+        f"₹{swp_remaining:,.2f}", swp_remaining_words
         ]
     })
 
     excel_file = generate_excel(sip_df, swp_df, summary_df)
     st.success("✅ Excel file generated!")
     st.download_button("📥 Download Excel", excel_file, file_name="SIP_SWP_Report.xlsx")
+
 
